@@ -1,0 +1,63 @@
+{  
+   "isLocal":true,
+   "client":{  
+      "inbounds":[  
+         {  
+            "tag":"socks",
+			"tl":"tcp",
+            "name":"socks",
+            "main":"InboundHandler",
+            "port":1000,
+            "listen":"0.0.0.0",
+            "sendTo":"openops",
+			"config":{
+			
+			}
+         }
+      ],
+      "outbounds":[  
+         {  
+            "tag":"openops",
+			"tl":"tcp",
+            "name":"openops",
+            "main":"InboundHandler",
+            "server":"127.0.0.1",
+            "port":4000,
+            "password":"hello",
+            "method":"aes-128-gcm",
+			"config":{
+                "method":"aes-128-gcm"
+			}
+         }
+      ]
+   },
+   "server":{  
+      "inbounds":[  
+         {  
+            "tag":"openops",
+			"tl":"tcp",
+            "name":"openops",
+            "main":"InboundHandler",
+            "listen":"0.0.0.0",
+            "port":4000,
+            "password":"hello",
+            "method":"aes-128-gcm",
+            "sendTo":"direct",
+			"config":{
+			
+			}
+         }
+      ],
+      "outbounds":[  
+         {  
+            "tag":"direct",
+			"tl":"tcp",
+            "name":"direct",
+            "main":"InboundHandler",
+			"config":{
+			
+			}
+         }
+      ]
+   }
+}

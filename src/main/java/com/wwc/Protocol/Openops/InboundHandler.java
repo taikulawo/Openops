@@ -47,11 +47,14 @@ public class InboundHandler extends SocketCallback implements Inbound {
     private String sendTo;
 
     private Handler<Buffer> handler  = data->{
-        int len = data.length() + TAG_LEN;
+        int len = data.length();
 
         byte[] encrypted = new byte[len + LENGTH_FIELD_LEN + TAG_LEN * 2];
+
         encryptor.encrypt(getBytesArrayOfShort(len),0,2,encrypted,0);
+        encryptor.incrementIv(true);
         encryptor.encrypt(data.getBytes(),0,data.length(),encrypted,TAG_LEN + LENGTH_FIELD_LEN);
+        encryptor.incrementIv(true);
         socket.write(Buffer.buffer(encrypted));
     };
 
@@ -136,13 +139,16 @@ public class InboundHandler extends SocketCallback implements Inbound {
        ringBuffer.peek(len);
        decryptor.decrypt(len,0,len.length,after,0);
        int chunkLen = getUnsignedshortFromBytesArray(after,0);
-       if(available < chunkLen){
+       if(available < chunkLen + authHeader){
            return;
        }
+       ringBuffer.skip(authHeader);
        decryptor.incrementIv(false);
        byte[] encryptedPayload = new byte[chunkLen];
-       byte[] payload = new byte[chunkLen - TAG_LEN] ;
+       byte[] payload = new byte[chunkLen - TAG_LEN];
+       ringBuffer.get(encryptedPayload);
        decryptor.decrypt(encryptedPayload,0,chunkLen,payload,0);
+       decryptor.incrementIv(false);
        outbound.process(Buffer.buffer(payload),dst,handler,this);
     }
 
@@ -153,7 +159,7 @@ public class InboundHandler extends SocketCallback implements Inbound {
         byte[] len = new byte[LENGTH_FIELD_LEN];
         decryptor.decrypt(authHeader,0,authHeader.length,len,0);
         int realChunkLen = getUnsignedshortFromBytesArray(len,0);
-        if(available < realChunkLen){
+        if(available < realChunkLen + authHeaderLen){
             log.debug("need: [{}], actual: [{}], waitting for more data",realChunkLen,available);
             return;
         }

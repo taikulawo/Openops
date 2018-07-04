@@ -221,6 +221,7 @@ public class InboundHandler implements Inbound{
             return;
         }
         stage = Stage.STREAM_DESTROYED;
+
         outbound.close();
         close();
     }

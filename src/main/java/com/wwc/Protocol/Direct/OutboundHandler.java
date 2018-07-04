@@ -9,7 +9,6 @@ import com.wwc.Utils.Handler;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.net.NetClient;
 import io.vertx.core.net.NetClientOptions;
-import io.vertx.core.net.NetSocket;
 import io.vertx.core.net.SocketAddress;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,7 +24,6 @@ public class OutboundHandler extends SocketCallback implements Outbound {
     private SocketAddress dst;
     private boolean isFirstRequest = true;
     private Queue<Buffer> queue = new LinkedList<>();
-    private NetSocket socket ;
 
     private Inbound in;
     private Handler<Buffer> handler;
@@ -55,8 +53,12 @@ public class OutboundHandler extends SocketCallback implements Outbound {
         client.connect(dst,res ->{
            if(res.succeeded()){
                isConnected = true;
-               log.info("Connected to [{}:{}]",dst.host(),dst.port());
                socket = res.result();
+               log.info("Connected to [{}:{}], Accept in [{}:{}], remote Address: [{}:{}]",
+                       dst.host(),dst.port(),
+                       socket.localAddress().host(),socket.localAddress().port()
+                       ,socket.remoteAddress().host(),socket.remoteAddress().port());
+
                socket.handler(this::handleOnRead)
                        .exceptionHandler(this::handleOnException)
                        .endHandler(this::handleOnEnd)
@@ -84,11 +86,7 @@ public class OutboundHandler extends SocketCallback implements Outbound {
     private NetClientOptions getNetClientOptions(){
         NetClientOptions option = new NetClientOptions();
         option.setLogActivity(true)
-                .setReconnectAttempts(2)
-                .setTcpKeepAlive(true)
-                .setReuseAddress(true)
-                .setIdleTimeout(300)
-                .setReusePort(true);
+                .setTcpKeepAlive(true);
         return option;
     }
 
@@ -104,6 +102,7 @@ public class OutboundHandler extends SocketCallback implements Outbound {
 
     @Override
     protected void handleOnRead(Buffer data) {
+        log.debug("recv from remote, data length: [{}]",data.length());
         handler.handle(data);
     }
 
@@ -115,6 +114,7 @@ public class OutboundHandler extends SocketCallback implements Outbound {
 
     @Override
     protected void handleOnEnd(Void v) {
+        log.debug("remote end");
         in.tell(END_ACTION,v);
         close();
     }
@@ -128,6 +128,7 @@ public class OutboundHandler extends SocketCallback implements Outbound {
 
     @Override
     protected void handleOnClose(Void v) {
+        log.debug("remote closed");
         tell(IBound.CLOSE_ACTION,v);
         close();
     }

@@ -37,7 +37,7 @@ public interface IEncryptor {
         if(++nonce[11] == 0) if( ++ nonce[10] == 0)
             if(++nonce[9] == 0 ) if(++ nonce[8] == 0)
                 if(++ nonce[7] == 0) if(++ nonce[6] == 0)
-                    if(++ nonce[5] == 0) if(++ nonce[4] == 0);
+                    if(++ nonce[5] == 0) if(++ nonce[4] == 0)
                         if(++ nonce[3] == 0) if(++ nonce[2] == 0)
                             if(++ nonce[1] == 0) if(++ nonce[0] == 0);
     }

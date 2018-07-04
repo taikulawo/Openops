@@ -52,6 +52,7 @@ public final class OutboundHandler extends SocketCallback implements Outbound {
     private boolean isDestroyed = false;
 
     private ConfigManager configManager = Main.instance.configManager;
+    private HashMap<String,Object> config;
 
     private String password;
     private String method;
@@ -59,6 +60,7 @@ public final class OutboundHandler extends SocketCallback implements Outbound {
     private HashMap<String,Object> outboundConfig = new HashMap<>();
 
     private SocketAddress dst;
+    private SocketAddress proxyServerDst;
 
     private Inbound in;
 
@@ -77,7 +79,8 @@ public final class OutboundHandler extends SocketCallback implements Outbound {
     }
 
     private void connectToRemote(){
-        this.client.connect(dst,res ->{
+        this.client = Main.getVertx().createNetClient(getNetClientOptions());
+        this.client.connect(proxyServerDst,res ->{
             if(res.succeeded()){
                 remoteConnected = true;
                 socket = res.result();
@@ -92,6 +95,12 @@ public final class OutboundHandler extends SocketCallback implements Outbound {
                 log.debug("Failed to connect: [{}]",res.cause());
             }
         });
+    }
+
+    private NetClientOptions getNetClientOptions(){
+        return new NetClientOptions()
+                .setTcpKeepAlive(true)
+                .setTcpNoDelay(true);
     }
 
     private void registerCallbackToSocket(){
@@ -187,6 +196,12 @@ public final class OutboundHandler extends SocketCallback implements Outbound {
         if(!requestSend){
             requestSend = true;
             this.in = in;
+            this.dst = addr;
+            this.config = configManager.getSpecOutboundFromTag("openops");
+            String host = (String) config.get("server");
+            int port = (int) config.get("port");
+
+            this.proxyServerDst = SocketAddress.inetSocketAddress(port,host);
             init(handler);
             connectToRemote();
             Buffer d = processFirstRequest(data);
@@ -203,7 +218,9 @@ public final class OutboundHandler extends SocketCallback implements Outbound {
         byte[] decrypted = new byte[LENGTH_FIELD_LEN + TAG_LEN * 2 + dataLen];
 
         encryptor.encrypt(getBytesArrayOfShort(dataLen+ TAG_LEN ),0,Short.BYTES,decrypted,0,null);
-        encryptor.encrypt(data.getBytes(),0,Short.BYTES,decrypted,Short.BYTES + TAG_LEN,null);
+        encryptor.incrementIv(true);
+        encryptor.encrypt(data.getBytes(),0,dataLen,decrypted,Short.BYTES + TAG_LEN,null);
+        encryptor.incrementIv(true);
 
         writeToSocket(Buffer.buffer(decrypted));
     }
@@ -246,9 +263,15 @@ public final class OutboundHandler extends SocketCallback implements Outbound {
         byte[] encrypted = new byte[LENGTH_FIELD_LEN + TAG_LEN * 2 + len + header.length];
 
         encryptor.encrypt(getBytesArrayOfShort(len + TAG_LEN + header.length),0,Short.BYTES,encrypted,0);
+        encryptor.incrementIv(true);
 
-        encryptor.encryptUpdate(header,0,header.length);
-        encryptor.encrypt(data.getBytes(), 0 , len,encrypted,Short.BYTES + TAG_LEN, (Object[]) null);
+        byte[] toEncrypt = new byte[header.length + len];
+
+        System.arraycopy(header,0,toEncrypt,0,header.length);
+        System.arraycopy(data.getBytes(),0,toEncrypt,header.length,len);
+
+        encryptor.encrypt(toEncrypt,0,toEncrypt.length,encrypted,TAG_LEN + LENGTH_FIELD_LEN);
+        encryptor.incrementIv(true);
 
         return Buffer.buffer(encrypted);
     }

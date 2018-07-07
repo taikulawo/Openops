@@ -19,11 +19,14 @@ import org.slf4j.LoggerFactory;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Queue;
 
 import static com.wwc.Protocol.Openops.OpenopsConstVar.*;
+import static com.wwc.Protocol.Openops.ProtocolImpl.firstEncrypt;
+import static com.wwc.Protocol.Openops.ProtocolImpl.runningEncrypt;
 import static com.wwc.Utils.Common.*;
 
 
@@ -85,12 +88,19 @@ public final class OutboundHandler extends SocketCallback implements Outbound {
                 remoteConnected = true;
                 socket = res.result();
                 registerCallbackToSocket();
-
-                queue.forEach(d ->{
-                   socket.write(d);
-                });
-                queue.clear();
-
+                log.info("Connected to [{}:{}], Accept in [{}:{}], remote Address: [{}:{}]",
+                        proxyServerDst.host(),proxyServerDst.port(),
+                        socket.localAddress().host(),socket.localAddress().port()
+                        ,socket.remoteAddress().host(),socket.remoteAddress().port());
+                while(true){
+                     Buffer d = queue.poll();
+                    if(d == null){
+                        break;
+                    }
+                    log.debug("write to socket, size: [{}]",d.length());
+                    socket.write(d);
+                }
+                queue = null;
             }else{
                 log.debug("Failed to connect: [{}]",res.cause());
             }
@@ -114,7 +124,7 @@ public final class OutboundHandler extends SocketCallback implements Outbound {
     @Override
     protected void handleOnRead(Buffer data){
         ringBuffer.put(data.getBytes());
-
+        log.debug("recv from remote, size: [{}],ByteCircularBuffer available: [{}]",data.length(),ringBuffer.getAvailableBytes());
         if(ringBuffer.getAvailableBytes() < AUTH_HEADER){
             log.debug("no available Bytes, return , available: [{}], need: [{}]",ringBuffer.getAvailableBytes(), AUTH_HEADER);
             return;
@@ -122,6 +132,7 @@ public final class OutboundHandler extends SocketCallback implements Outbound {
         byte[] authHeader = new byte[AUTH_HEADER];
         ringBuffer.peek(authHeader);
         byte[] lenBytes = new byte[LENGTH_FIELD_LEN];
+
         decryptor.decrypt(authHeader,0,AUTH_HEADER,lenBytes,0, (Object) null);
 
         int len = getUnsignedshortFromBytesArray(lenBytes,0);
@@ -139,8 +150,8 @@ public final class OutboundHandler extends SocketCallback implements Outbound {
 
         decryptor.decrypt(beforeDecrypted,0,len,afterDecrypted,0);
         decryptor.incrementIv(false);
-        writeToSocket(Buffer.buffer(afterDecrypted));
-
+        handler.handle(Buffer.buffer(afterDecrypted));
+        log.debug("ByteCircularBuffer available: [{}], before decrypt size: [{}], after: [{}]",ringBuffer.getAvailableBytes(),len,len-TAG_LEN);
     }
 
     protected void writeToSocket(Buffer data){
@@ -148,12 +159,13 @@ public final class OutboundHandler extends SocketCallback implements Outbound {
             queue.offer(data);
             return;
         }
+        log.debug("Write to socket, size: [{}]",data.length());
         socket.write(data);
     }
 
     @Override
     protected void handleOnDrain(Void v){
-
+        log.debug("drain handler called");
     }
 
     @Override
@@ -163,6 +175,7 @@ public final class OutboundHandler extends SocketCallback implements Outbound {
 
         //通知Inbound end事件发生
         in.tell(END_ACTION,v);
+        close();
     }
 
     @Override
@@ -204,25 +217,24 @@ public final class OutboundHandler extends SocketCallback implements Outbound {
             this.proxyServerDst = SocketAddress.inetSocketAddress(port,host);
             init(handler);
             connectToRemote();
-            Buffer d = processFirstRequest(data);
+             ArrayList<Buffer> list = processFirstRequest(data);
 
-            writeToSocket(d);
+
+            for(Buffer buf : list){
+                writeToSocket(buf);
+            }
             return;
         }
         processEncryptRunning(data);
     }
 
     private void processEncryptRunning(Buffer data){
-        int dataLen = data.length();
+        ArrayList<Buffer> list = runningEncrypt(data,encryptor);
 
-        byte[] decrypted = new byte[LENGTH_FIELD_LEN + TAG_LEN * 2 + dataLen];
+        for(Buffer buf : list){
+            writeToSocket(buf);
+        }
 
-        encryptor.encrypt(getBytesArrayOfShort(dataLen+ TAG_LEN ),0,Short.BYTES,decrypted,0,null);
-        encryptor.incrementIv(true);
-        encryptor.encrypt(data.getBytes(),0,dataLen,decrypted,Short.BYTES + TAG_LEN,null);
-        encryptor.incrementIv(true);
-
-        writeToSocket(Buffer.buffer(decrypted));
     }
 
     private void init(Handler<Buffer> handler){
@@ -233,7 +245,7 @@ public final class OutboundHandler extends SocketCallback implements Outbound {
 
         try {
             encryptor = EncryptorFactory.getEncryptor(this.method,this.password);
-            decryptor = EncryptorFactory.getEncryptor(password,method);
+            decryptor = EncryptorFactory.getEncryptor(this.method,this.password);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -255,25 +267,10 @@ public final class OutboundHandler extends SocketCallback implements Outbound {
     //+-------+----------+-------+-----------------+
     //|<-------tcp payload------>|<-----tag------->|
 
-    private Buffer processFirstRequest(Buffer data){
-        int len = data.length();
+    private ArrayList<Buffer> processFirstRequest(Buffer data){
 
         byte[] header = processRequestHeader();
-
-        byte[] encrypted = new byte[LENGTH_FIELD_LEN + TAG_LEN * 2 + len + header.length];
-
-        encryptor.encrypt(getBytesArrayOfShort(len + TAG_LEN + header.length),0,Short.BYTES,encrypted,0);
-        encryptor.incrementIv(true);
-
-        byte[] toEncrypt = new byte[header.length + len];
-
-        System.arraycopy(header,0,toEncrypt,0,header.length);
-        System.arraycopy(data.getBytes(),0,toEncrypt,header.length,len);
-
-        encryptor.encrypt(toEncrypt,0,toEncrypt.length,encrypted,TAG_LEN + LENGTH_FIELD_LEN);
-        encryptor.incrementIv(true);
-
-        return Buffer.buffer(encrypted);
+        return firstEncrypt(data,header,encryptor);
     }
 
     private byte[] processRequestHeader(){
@@ -311,7 +308,8 @@ public final class OutboundHandler extends SocketCallback implements Outbound {
 
     @Override
     public void close() {
-
+        if(socket != null)
+            socket.close();
     }
 
     @Override
@@ -324,29 +322,11 @@ public final class OutboundHandler extends SocketCallback implements Outbound {
 
             }
             case IBound.EXCEPTION_ACTION:{
-                log.debug("[{}]",(Throwable)o);
+
             }
             close();
         }
     }
-
-    private void destroyHandler(){
-        if(isDestroyed){
-            log.debug("already destroyed");
-            return;
-        }
-        in.close();
-        close();
-    }
-
-
-    //iv + tag + tcp payload
-    private Handler<byte[]> syncRingBufferHandler = data ->{
-
-        byte[] after = new byte[data.length - TAG_LEN];
-        decryptor.decrypt(data,0,data.length,after,0, (Object) null);
-        handler.handle(Buffer.buffer(after));
-    };
 
 }
 

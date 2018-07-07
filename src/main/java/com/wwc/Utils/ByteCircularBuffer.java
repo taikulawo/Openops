@@ -11,10 +11,6 @@ public class ByteCircularBuffer {
     private int readIndex = 0;
 
     private int writeIndex = 0;
-
-    private Handler<byte[]> handler;
-    private int waittingLen = 0;
-
     public boolean full = false;
     public boolean empty = true;
 
@@ -23,22 +19,18 @@ public class ByteCircularBuffer {
 
     private byte[] buffer;
 
-    public ByteCircularBuffer(int s){
-        this(s,null);
-    }
 
     public ByteCircularBuffer(){
-        this(DEFAULT_CAPACITY,null);
+        this(DEFAULT_CAPACITY);
 
     }
 
-    public ByteCircularBuffer(int s, Handler<byte[]> h){
+    public ByteCircularBuffer(int s){
         if(s < 0){
             throw new IllegalArgumentException("The buffer capacity must greater than zero or equal to zero.");
         }
         this.capacity = s;
         buffer = new byte[capacity];
-        this.handler = h;
     }
 
 
@@ -96,26 +88,8 @@ public class ByteCircularBuffer {
             full = true;
         }
 
-        if(handler != null){
-            if(waittingLen == 0){
-                return;
-            }
-            if(available >= waittingLen ){
-                byte[] call = new byte[waittingLen];
-                get(call);
-                handler.handle(call);
-                waittingLen = 0;
-            }
-        }
     }
 
-    public void setWaittingLength(int l){
-        this.waittingLen = l;
-    }
-
-    public void setHandler(Handler<byte[]> h){
-        this.handler = h;
-    }
 
     public void put(byte[] src){
         put(src,0,src.length);
@@ -313,15 +287,5 @@ public class ByteCircularBuffer {
             dstIndex += chunk;
         }
     }
-
-    /**
-     * Call before put new bytes into Buffer,
-     * @param length put length.
-     * @return true -> allow, false -> disallow.
-     */
-    public boolean allowPutBuffer(int length){
-        return available >= length;
-    }
-
 
 }

@@ -53,7 +53,7 @@ public class OutboundManager {
     }
 
     private void sweepTimeout(){
-        log.debug("start clean outbounds");
+
     }
 
     private class OutboundInfo{

@@ -16,6 +16,7 @@ import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.net.NetServer;
+import io.vertx.core.net.NetServerOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -46,13 +47,14 @@ public class TCPController extends AbstractVerticle {
         this.instance = Main.instance;
         this.config = c;
         this.vertx = instance.vertx;
-        this.netServer = vertx.createNetServer();
+        this.netServer = vertx.createNetServer(getNetServerOptions());
         this.configManager = instance.configManager;
         this.params = this.instance.configManager.params;
 
         this.sendTo = (String)config.get("sendTo");
         this.port = (int) config.get("port");
         this.inboundName = (String)config.get("tag");
+
     }
 
     @Override
@@ -79,5 +81,14 @@ public class TCPController extends AbstractVerticle {
             }
         });
     }
+
+    private NetServerOptions getNetServerOptions(){
+        return new NetServerOptions().setTcpNoDelay(true)
+                .setReuseAddress(true)
+                .setReusePort(true)
+                .setLogActivity(true)
+                .setReceiveBufferSize(2048);
+    }
+
 
 }

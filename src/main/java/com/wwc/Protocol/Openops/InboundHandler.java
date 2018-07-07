@@ -15,16 +15,17 @@ import io.vertx.core.net.SocketAddress;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 
 import static com.wwc.Protocol.Openops.Common.processATYP;
 import static com.wwc.Protocol.Openops.OpenopsConstVar.LENGTH_FIELD_LEN;
 import static com.wwc.Protocol.Openops.OpenopsConstVar.TAG_LEN;
+import static com.wwc.Protocol.Openops.ProtocolImpl.runningEncrypt;
 import static com.wwc.Utils.Common.getBytesArrayOfShort;
 import static com.wwc.Utils.Common.getUnsignedshortFromBytesArray;
 
 public class InboundHandler extends SocketCallback implements Inbound {
-    private static Logger log = LoggerFactory.getLogger(InboundHandler.class);
 
     private boolean firstReceived = false;
 
@@ -39,23 +40,18 @@ public class InboundHandler extends SocketCallback implements Inbound {
     private static final int Stream_Running = 1;
     private int stage = Stream_Init ;
 
-    private int needLen = -1;
-
     private SocketAddress dst;
     private Outbound outbound;
 
     private String sendTo;
 
     private Handler<Buffer> handler  = data->{
-        int len = data.length();
+        ArrayList<Buffer> list = runningEncrypt(data,encryptor);
+        for(Buffer buf : list){
+            log.debug("write encrypted data to socket, size: [{}]",buf.length());
+            socket.write(buf);
+        }
 
-        byte[] encrypted = new byte[len + LENGTH_FIELD_LEN + TAG_LEN * 2];
-
-        encryptor.encrypt(getBytesArrayOfShort(len),0,2,encrypted,0);
-        encryptor.incrementIv(true);
-        encryptor.encrypt(data.getBytes(),0,data.length(),encrypted,TAG_LEN + LENGTH_FIELD_LEN);
-        encryptor.incrementIv(true);
-        socket.write(Buffer.buffer(encrypted));
     };
 
     @Override
@@ -95,23 +91,6 @@ public class InboundHandler extends SocketCallback implements Inbound {
     }
 
     @Override
-    public void tell(int action, Object o) {
-        switch(action){
-            case IBound.END_ACTION: {
-
-            }
-            case IBound.CLOSE_ACTION:{
-
-            }
-            case IBound.EXCEPTION_ACTION:{
-                log.debug("",(Throwable)o);
-            }
-            close();
-        }
-    }
-
-
-    @Override
     protected void handleOnRead(Buffer data){
         ringBuffer.put(data.getBytes());
         if(!firstReceived){
@@ -140,6 +119,7 @@ public class InboundHandler extends SocketCallback implements Inbound {
        decryptor.decrypt(len,0,len.length,after,0);
        int chunkLen = getUnsignedshortFromBytesArray(after,0);
        if(available < chunkLen + authHeader){
+           log.debug("waitting for more data");
            return;
        }
        ringBuffer.skip(authHeader);
@@ -149,6 +129,7 @@ public class InboundHandler extends SocketCallback implements Inbound {
        ringBuffer.get(encryptedPayload);
        decryptor.decrypt(encryptedPayload,0,chunkLen,payload,0);
        decryptor.incrementIv(false);
+       log.debug("send data to outbound through process(), size: [{}]",payload.length);
        outbound.process(Buffer.buffer(payload),dst,handler,this);
     }
 
@@ -183,32 +164,35 @@ public class InboundHandler extends SocketCallback implements Inbound {
         int finalPosition = (int)os[1];
         Buffer send = Buffer.buffer(payload);
         send = send.slice(finalPosition,send.length());
+        log.debug("send data to outbound through process(), size: [{}]",send.length());
         outbound.process(send,dst,handler,this);
         firstReceived = true;
     }
 
-    private void processFirstRecv(Buffer data){
-
-
-    }
 
     @Override
     protected void handleOnDrain(Void v) {
-
+        log.debug("Drain handler called");
     }
 
     @Override
     protected void handleOnEnd(Void v) {
-
+        log.debug("socket end");
+        close();
+        outbound.tell(END_ACTION,v);
     }
 
     @Override
     protected void handleOnException(Throwable t) {
         log.debug("",t);
+        outbound.close();
+        close();
     }
 
     @Override
     protected void handleOnClose(Void v) {
-
+        log.debug("socket closed");
+        outbound.tell(CLOSE_ACTION,v);
+        close();
     }
 }

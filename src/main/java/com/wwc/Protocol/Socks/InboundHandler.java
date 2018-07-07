@@ -1,7 +1,6 @@
 package com.wwc.Protocol.Socks;
 
 import com.wwc.Main;
-import com.wwc.Protocol.IBound;
 import com.wwc.Protocol.Inbound;
 import com.wwc.Protocol.Outbound;
 import com.wwc.Utils.ByteCircularBuffer;
@@ -11,8 +10,6 @@ import io.vertx.core.buffer.Buffer;
 import io.vertx.core.dns.DnsClient;
 import io.vertx.core.net.NetSocket;
 import io.vertx.core.net.SocketAddress;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.net.UnknownHostException;
 import java.nio.charset.Charset;
@@ -22,7 +19,6 @@ import static com.wwc.Utils.Common.byteArrayIPToString;
 import static com.wwc.Utils.Common.bytePortToUnsignedInt;
 
 public class InboundHandler implements Inbound{
-    private Logger log = LoggerFactory.getLogger(InboundHandler.class);
 
     private DnsClient dnsClient ;
     private NetSocket socket;
@@ -106,12 +102,11 @@ public class InboundHandler implements Inbound{
     private void processStreamRunning(Buffer data){
         //for socks. we don't need to control package length,
         //so in there, we transfer all data we recv from socket.
-        outbound.process(data,dst,this::processDataFromOutbound,this);
-    }
-
-    private void processDataFromOutbound(Buffer data){
+        log.debug("Send to Outbound through process(), size: [{}]",data.length());
+        outbound.process(data,dst,this.handler,this);
 
     }
+
 
     private void processStreamAddrConnecting(){
         int available = ringBuffer.getAvailableBytes();
@@ -204,10 +199,13 @@ public class InboundHandler implements Inbound{
             return;
         }
         close();
+        outbound.tell(CLOSE_ACTION,v);
     }
 
     private void handleOnLocalException(Throwable t){
         log.debug("exception occurred on Local, [{}]",t);
+        close();
+        outbound.tell(EXCEPTION_ACTION,t);
     }
 
     private void handleOnLocalEnd(Void v){
@@ -222,7 +220,8 @@ public class InboundHandler implements Inbound{
         }
         stage = Stage.STREAM_DESTROYED;
 
-        outbound.close();
+        Void v = null;
+        outbound.tell(END_ACTION,v);
         close();
     }
 
@@ -235,8 +234,6 @@ public class InboundHandler implements Inbound{
                 .exceptionHandler(this::handleOnLocalException);
         this.config = Main.instance.configManager.getSpecConfig("socks");
         this.inboundConfig = config.inbound;
-
-        HashMap<String,Object> protocolConfig = (HashMap) inboundConfig.get("config");
     }
 
     @Override
@@ -248,26 +245,9 @@ public class InboundHandler implements Inbound{
         socket.close();
     }
 
-    @Override
-    public void tell(int action, Object o) {
-        switch(action){
-            case IBound.END_ACTION: {
-
-            }
-            case IBound.CLOSE_ACTION:{
-
-            }
-            break;
-            case IBound.EXCEPTION_ACTION:{
-                log.debug("[{}]",(Throwable)o);
-            }
-        }
-        destroyHandler();
-    }
-
-
     private Handler<Buffer> handler = data ->{
-      socket.write(data);
+        log.debug("Socks#InboundHandler, write to socket, size: [{}]",data.length());
+        socket.write(data);
     };
 
 

@@ -112,7 +112,7 @@ public class Common {
 
     public static byte[] getBytesArrayOfShort(int i){
 
-        if(i > Short.MAX_VALUE * 2 + 1){
+        if(i > Short.MAX_VALUE * 2 + 2){
             throw new IllegalArgumentException("s must less than or equals Short MAX_VALUE!");
         }
         short s = (short)i;

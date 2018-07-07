@@ -66,20 +66,27 @@ public class OutboundHandler extends SocketCallback implements Outbound {
                        .closeHandler(this::handleOnClose);
 
 
-               queue.forEach( data ->{
-                   socket.write(data);
-               });
-               queue.clear();
+               while(true){
+                   Buffer d = queue.poll();
+                   if(d == null){
+                       break;
+                   }
+                   log.debug("write to socket, size: [{}]",d.length());
+                   socket.write(d);
+               }
 
            }else{
                log.debug("cannot connect to [{}:{}]",dst.host(),dst.port(),res.cause());
+               tell(EXCEPTION_ACTION,res.cause());
+               close();
            }
         });
     }
 
     @Override
     public void close() {
-        socket.close();
+        if(socket!=null)
+            socket.close();
         isDestroyed = true;
     }
 
@@ -88,16 +95,6 @@ public class OutboundHandler extends SocketCallback implements Outbound {
         option.setLogActivity(true)
                 .setTcpKeepAlive(true);
         return option;
-    }
-
-
-    private void destroyHandler(){
-        if(isDestroyed){
-           log.debug("already  been destroyed");
-            return;
-        }
-        in.close();
-        close();
     }
 
     @Override
@@ -109,7 +106,6 @@ public class OutboundHandler extends SocketCallback implements Outbound {
     @Override
     protected void handleOnDrain(Void v) {
         log.debug("DrainHandler");
-        close();
     }
 
     @Override
@@ -129,7 +125,7 @@ public class OutboundHandler extends SocketCallback implements Outbound {
     @Override
     protected void handleOnClose(Void v) {
         log.debug("remote closed");
-        tell(IBound.CLOSE_ACTION,v);
+        in.tell(IBound.CLOSE_ACTION,v);
         close();
     }
 }

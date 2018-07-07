@@ -9,4 +9,6 @@ public interface OpenopsConstVar {
     int ATYP_DOMAIN = 0x03;
 
     int ATYP_IPV6 = 0x04;
+
+    int CHUNK_LEN_MASK = 0x3fff;
 }

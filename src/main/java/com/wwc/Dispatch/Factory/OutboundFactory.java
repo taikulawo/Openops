@@ -6,11 +6,10 @@ import com.wwc.Protocol.Outbound;
 import java.util.ArrayList;
 import java.util.HashMap;
 
-public class OutboundFactory {
+public class OutboundFactory extends Factory{
     private HashMap<String,HashMap<String,Object>> configs  = new HashMap<>();
     private HashMap<String,Class<?>> classObjects = new HashMap<>();
 
-    private String packageUrl = "com.wwc.Protocol.";
 
     private HashMap<String,ProtocolInfo> registered = new HashMap<>();
 

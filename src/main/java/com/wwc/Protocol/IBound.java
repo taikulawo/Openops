@@ -16,7 +16,7 @@ public interface IBound {
     default void tell(int action, Object o){
         switch(action){
             case EXCEPTION_ACTION:{
-                log.debug("[{}]",(Throwable)o);
+                log.debug("",(Throwable)o);
             }
             case END_ACTION:{
 

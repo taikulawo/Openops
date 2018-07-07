@@ -11,6 +11,4 @@ public abstract class AbstractAESStreamEncryptor implements IEncryptor {
     }
 
     abstract protected void init();
-    abstract int encryptorUpdate(byte[] src, int inputOffset, int inputLen, byte[] dst, int outputOffset);
-    abstract int decryptorUpdate(byte[] src, int inputOffset, int inputLen, byte[] dst, int outputOffset);
 }

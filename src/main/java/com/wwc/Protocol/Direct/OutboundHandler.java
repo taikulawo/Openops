@@ -23,12 +23,15 @@ public class OutboundHandler extends SocketCallback implements Outbound {
     private boolean isConnected = false;
     private SocketAddress dst;
     private boolean isFirstRequest = true;
-    private Queue<Buffer> queue = new LinkedList<>();
 
     private Inbound in;
     private Handler<Buffer> handler;
 
     private boolean isDestroyed = false;
+
+    public OutboundHandler() {
+        super("Direct/OutboundHandler");
+    }
 
     @Override
     public void process(Buffer data, SocketAddress addr, Handler<Buffer> handler, Inbound in) {
@@ -45,7 +48,7 @@ public class OutboundHandler extends SocketCallback implements Outbound {
             return;
         }
 
-        socket.write(data);
+        writeToSocket(data);
     }
 
     private void init(){
@@ -66,14 +69,7 @@ public class OutboundHandler extends SocketCallback implements Outbound {
                        .closeHandler(this::handleOnClose);
 
 
-               while(true){
-                   Buffer d = queue.poll();
-                   if(d == null){
-                       break;
-                   }
-                   log.debug("write to socket, size: [{}]",d.length());
-                   socket.write(d);
-               }
+               writeToSocket(null);
 
            }else{
                log.debug("cannot connect to [{}:{}]",dst.host(),dst.port(),res.cause());
@@ -93,7 +89,9 @@ public class OutboundHandler extends SocketCallback implements Outbound {
     private NetClientOptions getNetClientOptions(){
         NetClientOptions option = new NetClientOptions();
         option.setLogActivity(true)
-                .setTcpKeepAlive(true);
+                .setTcpKeepAlive(true)
+                .setReconnectAttempts(3)
+                .setReconnectInterval(1000);;
         return option;
     }
 
@@ -101,11 +99,6 @@ public class OutboundHandler extends SocketCallback implements Outbound {
     protected void handleOnRead(Buffer data) {
         log.debug("recv from remote, data length: [{}]",data.length());
         handler.handle(data);
-    }
-
-    @Override
-    protected void handleOnDrain(Void v) {
-        log.debug("DrainHandler");
     }
 
     @Override
@@ -128,4 +121,5 @@ public class OutboundHandler extends SocketCallback implements Outbound {
         in.tell(IBound.CLOSE_ACTION,v);
         close();
     }
+
 }

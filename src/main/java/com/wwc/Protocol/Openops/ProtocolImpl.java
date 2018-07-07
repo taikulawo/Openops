@@ -12,7 +12,9 @@ import static com.wwc.Utils.Common.getBytesArrayOfShort;
 
 public class ProtocolImpl {
 
-    public static ArrayList<Buffer> firstEncrypt(Buffer data, byte[] header, IEncryptor encryptor){
+    public static ArrayList<Buffer> firstEncrypt(Buffer data, byte[] header, IEncryptor encryptor)
+            throws Exception {
+
         int len = data.length();
         int headerLen = header.length;
         int afterEncLen = LENGTH_FIELD_LEN + TAG_LEN * 2 + headerLen + len;
@@ -42,7 +44,9 @@ public class ProtocolImpl {
         return bufList;
     }
 
-    private static Buffer doRunningEncrypt(byte[] src, IEncryptor encryptor){
+    private static Buffer doRunningEncrypt(byte[] src, IEncryptor encryptor)
+            throws Exception {
+
         int len = src.length ;
         byte[] encrypted = new byte[len + TAG_LEN * 2 + LENGTH_FIELD_LEN];
         encryptor.encrypt(getBytesArrayOfShort(len+ TAG_LEN),0,LENGTH_FIELD_LEN,encrypted,0);
@@ -54,7 +58,9 @@ public class ProtocolImpl {
     }
 
 
-    public static ArrayList<Buffer> runningEncrypt(Buffer data, IEncryptor encryptor){
+    public static ArrayList<Buffer> runningEncrypt(Buffer data, IEncryptor encryptor)
+            throws Exception {
+
         ArrayList<Buffer> list = new ArrayList<>();
         int dataLenNoHeader = CHUNK_LEN_MASK - TAG_LEN * 2 - LENGTH_FIELD_LEN;
         int available = data.length();

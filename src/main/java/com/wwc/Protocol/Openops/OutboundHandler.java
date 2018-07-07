@@ -3,7 +3,6 @@ package com.wwc.Protocol.Openops;
 import com.wwc.Crypto.EncryptorFactory;
 import com.wwc.Crypto.IEncryptor;
 import com.wwc.Main;
-import com.wwc.Protocol.IBound;
 import com.wwc.Protocol.Inbound;
 import com.wwc.Protocol.Outbound;
 import com.wwc.Socket.SocketCallback;
@@ -67,8 +66,6 @@ public final class OutboundHandler extends SocketCallback implements Outbound {
 
     private Inbound in;
 
-    private Queue<Buffer> queue = new LinkedList<>();
-
     private IEncryptor encryptor;
     private IEncryptor decryptor;
 
@@ -78,7 +75,9 @@ public final class OutboundHandler extends SocketCallback implements Outbound {
     private Handler<Buffer> handler;
 
     public OutboundHandler(){
+        super("Openops/OutboundHandler");
         configuringNetClient();
+
     }
 
     private void connectToRemote(){
@@ -92,15 +91,7 @@ public final class OutboundHandler extends SocketCallback implements Outbound {
                         proxyServerDst.host(),proxyServerDst.port(),
                         socket.localAddress().host(),socket.localAddress().port()
                         ,socket.remoteAddress().host(),socket.remoteAddress().port());
-                while(true){
-                     Buffer d = queue.poll();
-                    if(d == null){
-                        break;
-                    }
-                    log.debug("write to socket, size: [{}]",d.length());
-                    socket.write(d);
-                }
-                queue = null;
+                writeToSocket(null);
             }else{
                 log.debug("Failed to connect: [{}]",res.cause());
             }
@@ -110,7 +101,9 @@ public final class OutboundHandler extends SocketCallback implements Outbound {
     private NetClientOptions getNetClientOptions(){
         return new NetClientOptions()
                 .setTcpKeepAlive(true)
-                .setTcpNoDelay(true);
+                .setTcpNoDelay(true)
+                .setReconnectAttempts(3)
+                .setReconnectInterval(1000);
     }
 
     private void registerCallbackToSocket(){
@@ -123,50 +116,44 @@ public final class OutboundHandler extends SocketCallback implements Outbound {
 
     @Override
     protected void handleOnRead(Buffer data){
-        ringBuffer.put(data.getBytes());
-        log.debug("recv from remote, size: [{}],ByteCircularBuffer available: [{}]",data.length(),ringBuffer.getAvailableBytes());
-        if(ringBuffer.getAvailableBytes() < AUTH_HEADER){
-            log.debug("no available Bytes, return , available: [{}], need: [{}]",ringBuffer.getAvailableBytes(), AUTH_HEADER);
-            return;
+        try{
+            ringBuffer.put(data.getBytes());
+            log.debug("recv from remote, size: [{}],ByteCircularBuffer available: [{}]",data.length(),ringBuffer.getAvailableBytes());
+            if(ringBuffer.getAvailableBytes() < AUTH_HEADER){
+                log.debug("no available Bytes, return , available: [{}], need: [{}]",ringBuffer.getAvailableBytes(), AUTH_HEADER);
+                return;
+            }
+            byte[] authHeader = new byte[AUTH_HEADER];
+            ringBuffer.peek(authHeader);
+            byte[] lenBytes = new byte[LENGTH_FIELD_LEN];
+
+            decryptor.decrypt(authHeader,0,AUTH_HEADER,lenBytes,0, (Object) null);
+
+            int len = getUnsignedshortFromBytesArray(lenBytes,0);
+
+            int available = ringBuffer.getAvailableBytes();
+            if(available < len + AUTH_HEADER){
+                log.debug("waitting for more data, current: [{}], need: [{}]",available,len + AUTH_HEADER);
+                return;
+            }
+            ringBuffer.skip(AUTH_HEADER);
+            decryptor.incrementIv(false);
+            byte[] beforeDecrypted = new byte[len];
+            byte[] afterDecrypted = new byte[len - TAG_LEN];
+            ringBuffer.get(beforeDecrypted);
+
+            decryptor.decrypt(beforeDecrypted,0,len,afterDecrypted,0);
+            decryptor.incrementIv(false);
+            handler.handle(Buffer.buffer(afterDecrypted));
+            log.debug("ByteCircularBuffer available: [{}], before decrypt size: [{}], after: [{}]",ringBuffer.getAvailableBytes(),len,len-TAG_LEN);
+        }catch(Exception e ){
+            log.error("",e);
+            close();
         }
-        byte[] authHeader = new byte[AUTH_HEADER];
-        ringBuffer.peek(authHeader);
-        byte[] lenBytes = new byte[LENGTH_FIELD_LEN];
 
-        decryptor.decrypt(authHeader,0,AUTH_HEADER,lenBytes,0, (Object) null);
 
-        int len = getUnsignedshortFromBytesArray(lenBytes,0);
-
-        int available = ringBuffer.getAvailableBytes();
-        if(available < len + AUTH_HEADER){
-            log.debug("waitting for more data, current: [{}], need: [{}]",available,len + AUTH_HEADER);
-            return;
-        }
-        ringBuffer.skip(AUTH_HEADER);
-        decryptor.incrementIv(false);
-        byte[] beforeDecrypted = new byte[len];
-        byte[] afterDecrypted = new byte[len - TAG_LEN];
-        ringBuffer.get(beforeDecrypted);
-
-        decryptor.decrypt(beforeDecrypted,0,len,afterDecrypted,0);
-        decryptor.incrementIv(false);
-        handler.handle(Buffer.buffer(afterDecrypted));
-        log.debug("ByteCircularBuffer available: [{}], before decrypt size: [{}], after: [{}]",ringBuffer.getAvailableBytes(),len,len-TAG_LEN);
     }
 
-    protected void writeToSocket(Buffer data){
-        if(!remoteConnected){
-            queue.offer(data);
-            return;
-        }
-        log.debug("Write to socket, size: [{}]",data.length());
-        socket.write(data);
-    }
-
-    @Override
-    protected void handleOnDrain(Void v){
-        log.debug("drain handler called");
-    }
 
     @Override
     protected void handleOnEnd(Void v){
@@ -206,34 +193,39 @@ public final class OutboundHandler extends SocketCallback implements Outbound {
 
     @Override
     public void process(Buffer data, SocketAddress addr, Handler<Buffer> handler, Inbound in) {
-        if(!requestSend){
-            requestSend = true;
-            this.in = in;
-            this.dst = addr;
-            this.config = configManager.getSpecOutboundFromTag("openops");
-            String host = (String) config.get("server");
-            int port = (int) config.get("port");
+        try{
+            if(!requestSend){
+                requestSend = true;
+                this.in = in;
+                this.dst = addr;
+                this.config = configManager.getSpecOutboundFromTag("openops");
+                String host = (String) config.get("server");
+                int port = (int) config.get("port");
 
-            this.proxyServerDst = SocketAddress.inetSocketAddress(port,host);
-            init(handler);
-            connectToRemote();
-             ArrayList<Buffer> list = processFirstRequest(data);
+                this.proxyServerDst = SocketAddress.inetSocketAddress(port,host);
+                init(handler);
+                connectToRemote();
+                ArrayList<Buffer> list = processFirstRequest(data);
 
 
-            for(Buffer buf : list){
-                writeToSocket(buf);
+                queue.addAll(list);
+                writeToSocket(null);
+                return;
             }
-            return;
+            processEncryptRunning(data);
+        }catch(Exception e ){
+            log.error("",e);
+            close();
         }
-        processEncryptRunning(data);
     }
 
-    private void processEncryptRunning(Buffer data){
+    private void processEncryptRunning(Buffer data)
+            throws Exception {
+
         ArrayList<Buffer> list = runningEncrypt(data,encryptor);
 
-        for(Buffer buf : list){
-            writeToSocket(buf);
-        }
+        queue.addAll(list);
+        writeToSocket(null);
 
     }
 
@@ -267,7 +259,8 @@ public final class OutboundHandler extends SocketCallback implements Outbound {
     //+-------+----------+-------+-----------------+
     //|<-------tcp payload------>|<-----tag------->|
 
-    private ArrayList<Buffer> processFirstRequest(Buffer data){
+    private ArrayList<Buffer> processFirstRequest(Buffer data)
+            throws Exception {
 
         byte[] header = processRequestHeader();
         return firstEncrypt(data,header,encryptor);
@@ -312,21 +305,7 @@ public final class OutboundHandler extends SocketCallback implements Outbound {
             socket.close();
     }
 
-    @Override
-    public void tell(int action, Object o) {
-        switch(action){
-            case IBound.END_ACTION: {
 
-            }
-            case IBound.CLOSE_ACTION:{
-
-            }
-            case IBound.EXCEPTION_ACTION:{
-
-            }
-            close();
-        }
-    }
 
 }
 

@@ -1,6 +1,11 @@
 package com.wwc;
 
+import com.wwc.Crypto.IEncryptor;
+import org.apache.log4j.BasicConfigurator;
+import org.junit.Before;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Arrays;
 
@@ -9,26 +14,23 @@ import static com.wwc.Utils.Common.getUnsignedshortFromBytesArray;
 
 public class CommonTest {
 
+    Logger log = LoggerFactory.getLogger(CommonTest.class);
+
+    @Before
+    public void prepare(){
+        BasicConfigurator.configure();
+    }
+
     @Test
     public void nonceIncrementTest() {
-        byte[] nonce = new byte[8];
-        int count = 100;
-        while (count > 0) {
-            count--;
-            if (++nonce[7] == 0) if (++nonce[6] == 0)
-                if (++nonce[5] == 0) if (++nonce[4] == 0)
-                    if (++nonce[3] == 0) if (++nonce[2] == 0)
-                        if (++nonce[1] == 0) if (++nonce[0] == 0) break;
-
-
-            //   long value = 0;
-            //   for(int i = 0 ; i < nonce.length ; ++i){
-            //       value = (value << 8) + (nonce[i] & 0xff);
-            //   }
-            //   System.out.println(value);
-
-            System.out.println(Arrays.toString(nonce));
+        byte[] nonce = new byte[12];
+        int cnt = 20;
+        while(cnt != 0){
+            cnt --;
+            IEncryptor.ivIncrement(nonce);
+            log.debug(Arrays.toString(nonce));
         }
+        log.error("",new Exception("exceptipn"));
     }
 
     @Test

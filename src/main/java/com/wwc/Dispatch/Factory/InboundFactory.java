@@ -24,8 +24,6 @@ public class InboundFactory extends Factory{
     private HashMap<String,Class<?>> classObjects = new HashMap<>();
     private HashMap<String,ProtocolInfo> registered  = new HashMap<>();
 
-    private String packageUrl = "com.wwc.Protocol.";
-
     public InboundFactory(){
         initRegisteredProtocols();
     }

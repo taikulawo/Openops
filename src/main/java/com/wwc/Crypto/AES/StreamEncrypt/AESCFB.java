@@ -23,16 +23,6 @@ public final class AESCFB extends AbstractAESStreamEncryptor {
     }
 
     @Override
-    int encryptorUpdate(byte[] src, int inputOffset, int inputLen, byte[] dst, int outputOffset) {
-        return 0;
-    }
-
-    @Override
-    int decryptorUpdate(byte[] src, int inputOffset, int inputLen, byte[] dst, int outputOffset) {
-        return 0;
-    }
-
-    @Override
     public void encrypt(byte[] in, int start, int inLength, byte[] out, int index, Object... os) {
 
     }

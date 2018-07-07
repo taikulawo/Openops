@@ -17,6 +17,8 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.Queue;
 
 import static com.wwc.Protocol.Openops.Common.processATYP;
 import static com.wwc.Protocol.Openops.OpenopsConstVar.LENGTH_FIELD_LEN;
@@ -45,12 +47,22 @@ public class InboundHandler extends SocketCallback implements Inbound {
 
     private String sendTo;
 
+    public InboundHandler(){
+        super("Openops/InboundHandler");
+    }
+
     private Handler<Buffer> handler  = data->{
-        ArrayList<Buffer> list = runningEncrypt(data,encryptor);
-        for(Buffer buf : list){
-            log.debug("write encrypted data to socket, size: [{}]",buf.length());
-            socket.write(buf);
+        ArrayList<Buffer> list = null;
+        try {
+            list = runningEncrypt(data,encryptor);
+            queue.addAll(list);
+
+            writeToSocket(null);
+        } catch (Exception e) {
+            log.error("",e);
+            close();
         }
+
 
     };
 
@@ -87,27 +99,35 @@ public class InboundHandler extends SocketCallback implements Inbound {
 
     @Override
     public void close() {
-        socket.close();
+        if(socket != null)
+            socket.close();
+        socket = null;
     }
 
     @Override
     protected void handleOnRead(Buffer data){
-        ringBuffer.put(data.getBytes());
-        if(!firstReceived){
-            int authHeader = LENGTH_FIELD_LEN + TAG_LEN;
-            if(ringBuffer.getAvailableBytes() < authHeader){
-                log.debug("current: [{}], waitting for more data",ringBuffer.getAvailableBytes());
+        try {
+            ringBuffer.put(data.getBytes());
+            if(!firstReceived){
+                int authHeader = LENGTH_FIELD_LEN + TAG_LEN;
+                if(ringBuffer.getAvailableBytes() < authHeader){
+                    log.debug("current: [{}], waitting for more data",ringBuffer.getAvailableBytes());
+                    return;
+
+                }
+                processHeader(authHeader);
                 return;
-
             }
-            processHeader(authHeader);
-            return;
+            processRunning();
+        } catch (Exception e) {
+            log.error("",e);
+            close();
         }
-
-        processRunning();
     }
-    private void processRunning(){
-       int available = ringBuffer.getAvailableBytes();
+    private void processRunning()
+            throws Exception {
+
+        int available = ringBuffer.getAvailableBytes();
        int authHeader = LENGTH_FIELD_LEN + TAG_LEN;
        if(available < authHeader){
            log.debug("waitting for more data,current: [{}], need: [{}]",available,authHeader);
@@ -133,7 +153,8 @@ public class InboundHandler extends SocketCallback implements Inbound {
        outbound.process(Buffer.buffer(payload),dst,handler,this);
     }
 
-    private void processHeader(int authHeaderLen){
+    private void processHeader(int authHeaderLen)
+            throws Exception {
 
         int available = ringBuffer.getAvailableBytes();
         byte[] authHeader = ringBuffer.peek(authHeaderLen);
@@ -171,11 +192,6 @@ public class InboundHandler extends SocketCallback implements Inbound {
 
 
     @Override
-    protected void handleOnDrain(Void v) {
-        log.debug("Drain handler called");
-    }
-
-    @Override
     protected void handleOnEnd(Void v) {
         log.debug("socket end");
         close();
@@ -195,4 +211,5 @@ public class InboundHandler extends SocketCallback implements Inbound {
         outbound.tell(CLOSE_ACTION,v);
         close();
     }
+
 }

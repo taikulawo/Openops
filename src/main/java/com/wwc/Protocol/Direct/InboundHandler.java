@@ -14,6 +14,10 @@ public class InboundHandler extends SocketCallback implements Inbound {
     private Outbound outbound;
     private String sendTo;
 
+    public InboundHandler() {
+        super("Direct/InboundHandler");
+    }
+
 
     @Override
     public void process(NetSocket socket) {
@@ -41,10 +45,6 @@ public class InboundHandler extends SocketCallback implements Inbound {
         //outbound.process(data);
     }
 
-    @Override
-    protected void handleOnDrain(Void v) {
-
-    }
 
     @Override
     protected void handleOnEnd(Void v) {

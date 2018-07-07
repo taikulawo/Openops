@@ -11,7 +11,4 @@ public abstract class AbstractAEADEncryptor extends AbstractEncryptor {
         super(method, passwd);
     }
 
-
-
-
 }

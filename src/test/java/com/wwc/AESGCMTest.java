@@ -25,7 +25,7 @@ public class AESGCMTest {
     }
 
     @Test
-    public void encDecTest(){
+    public void encDecTest() throws Exception {
         int count = 1000;
 
         while(count > 0 ){

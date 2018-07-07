@@ -47,7 +47,12 @@ public class ProtocolImplTest {
             random.nextBytes(veryBigRandomBytesArray);
             Buffer buf = Buffer.buffer(veryBigRandomBytesArray);
 
-            ArrayList<Buffer> encrypted = firstEncrypt(buf,header,encryptor);
+            ArrayList<Buffer> encrypted = null;
+            try {
+                encrypted = firstEncrypt(buf,header,encryptor);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
 
             ArrayList<byte[]> decrypted = new ArrayList<>();
             for(Buffer b : encrypted){

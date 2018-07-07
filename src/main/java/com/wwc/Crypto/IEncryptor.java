@@ -3,11 +3,15 @@ package com.wwc.Crypto;
 import java.security.SecureRandom;
 
 public interface IEncryptor {
-    void encrypt(byte[] in, int start,int inLength,byte[] out, int index,Object... os);
-    void decrypt(byte[] in, int start,int inLength,byte[] out, int index,Object... os);
+    void encrypt(byte[] in, int start,int inLength,byte[] out, int index,Object... os)
+            throws Exception;
+
+    void decrypt(byte[] in, int start,int inLength,byte[] out, int index,Object... os)
+            throws Exception;
 
     void encryptUpdate(byte[] in, int inputOffset, int inputLen);
     void decryptUpdate(byte[] in, int inputOffset, int inputLen);
+
 
     static void generateRandom(byte[] dst, int start, int len,SecureRandom rng){
         if(dst == null || rng == null){
@@ -34,12 +38,19 @@ public interface IEncryptor {
      * @param nonce
      */
     static void ivIncrement(byte[] nonce) {
-        if(++nonce[11] == 0) if( ++ nonce[10] == 0)
-            if(++nonce[9] == 0 ) if(++ nonce[8] == 0)
-                if(++ nonce[7] == 0) if(++ nonce[6] == 0)
-                    if(++ nonce[5] == 0) if(++ nonce[4] == 0)
-                        if(++ nonce[3] == 0) if(++ nonce[2] == 0)
-                            if(++ nonce[1] == 0) if(++ nonce[0] == 0);
+        int len = nonce.length;
+        for (int i = len - 1 ; i >= 0 ; i --){
+            if(++nonce[i] != 0){
+                break;
+            }
+        }
+
+//        if(++nonce[11] == 0) if( ++ nonce[10] == 0)
+//            if(++nonce[9] == 0 ) if(++ nonce[8] == 0)
+//                if(++ nonce[7] == 0) if(++ nonce[6] == 0)
+//                    if(++ nonce[5] == 0) if(++ nonce[4] == 0)
+//                        if(++ nonce[3] == 0) if(++ nonce[2] == 0)
+//                            if(++ nonce[1] == 0) if(++ nonce[0] == 0);
     }
 
     default void encryptorUpdateAAD(byte[] src, int startIndex, int len){

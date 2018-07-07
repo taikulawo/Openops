@@ -3,6 +3,8 @@ package com.wwc.Crypto.AES.AEAD;
 import com.wwc.Crypto.IEncryptor;
 import com.wwc.Crypto.SupportedMethod;
 import com.wwc.Protocol.IBound;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.crypto.*;
 import javax.crypto.spec.GCMParameterSpec;
@@ -21,6 +23,7 @@ import static com.wwc.Utils.Common.getMD5;
 //encrypt 和 decrypt独立使用两个不同的IV，由于每个加密对应着一个解密，所以encIv与decIv值相同。
 
 public class AESGCM extends AbstractAEADEncryptor {
+    private Logger log = LoggerFactory.getLogger(AESGCM.class);
     public static final int IV_LEN_12 = 12;
 //    public static final int IV_LEN_
     protected SecureRandom rng = new SecureRandom();
@@ -84,7 +87,9 @@ public class AESGCM extends AbstractAEADEncryptor {
      * @param os
      */
     @Override
-    public void encrypt(byte[] in, int start, int inLength, byte[] out, int index, Object... os) {
+    public void encrypt(byte[] in, int start, int inLength, byte[] out, int index, Object... os)
+            throws Exception {
+
         try {
             encryptor.init(Cipher.ENCRYPT_MODE,key, new GCMParameterSpec(tagLen * 8 , encIv));
         } catch (InvalidKeyException
@@ -93,14 +98,13 @@ public class AESGCM extends AbstractAEADEncryptor {
                 encryptor.init(Cipher.ENCRYPT_MODE,key,new GCMParameterSpec(128,encIv));
             } catch (InvalidKeyException
                     | InvalidAlgorithmParameterException e1) {
-                e1.printStackTrace();
+                throw new Exception("In AESGCM#Encrypt, failed");
             }
-            e.printStackTrace();
         }
         try {
             encryptor.doFinal(in,start,inLength,out,index);
         } catch (ShortBufferException | IllegalBlockSizeException | BadPaddingException e) {
-            e.printStackTrace();
+            throw new Exception("In AESGCM#Encrypt, failed");
         }
 
 
@@ -117,7 +121,7 @@ public class AESGCM extends AbstractAEADEncryptor {
      * @param os os[0] is iv, when in encrypt and decrypt, iv will be used to generate GCMParameterSpec
      */
     @Override
-    public void decrypt(byte[] in, int start, int inLength, byte[] out, int index,Object... os) {
+    public void decrypt(byte[] in, int start, int inLength, byte[] out, int index,Object... os) throws Exception {
 
         try {
             decryptor.init(Cipher.DECRYPT_MODE,key, new GCMParameterSpec(tagLen * 8 , decIv));
@@ -127,14 +131,13 @@ public class AESGCM extends AbstractAEADEncryptor {
                 decryptor.init(Cipher.DECRYPT_MODE,key,new GCMParameterSpec(128,decIv));
             } catch (InvalidKeyException
                     | InvalidAlgorithmParameterException e1) {
-                e1.printStackTrace();
+                throw new Exception("In AESGCM#Decrypt, failed");
             }
-            e.printStackTrace();
         }
         try {
             decryptor.doFinal(in,start,inLength,out,index);
         } catch (ShortBufferException | IllegalBlockSizeException | BadPaddingException e) {
-            e.printStackTrace();
+            throw new Exception("In AESGCM#Decrypt, failed");
         }
     }
 

@@ -3,6 +3,7 @@ package com.wwc.Protocol.Socks;
 import com.wwc.Main;
 import com.wwc.Protocol.Inbound;
 import com.wwc.Protocol.Outbound;
+import com.wwc.Socket.SocketCallback;
 import com.wwc.Utils.ByteCircularBuffer;
 import com.wwc.Utils.Handler;
 import com.wwc.Utils.SpecConfig;
@@ -18,10 +19,9 @@ import java.util.HashMap;
 import static com.wwc.Utils.Common.byteArrayIPToString;
 import static com.wwc.Utils.Common.bytePortToUnsignedInt;
 
-public class InboundHandler implements Inbound{
+public class InboundHandler extends SocketCallback implements Inbound{
 
     private DnsClient dnsClient ;
-    private NetSocket socket;
     private Stage stage = Stage.STREAM_START;
 
     private boolean isClosed = false;
@@ -51,17 +51,17 @@ public class InboundHandler implements Inbound{
     private Outbound outbound;
 
     public InboundHandler(){
-
+        super("Socks/InboundHandler");
     }
 
-    private void handleOnLocalRead(Buffer buffer){
-
+    @Override
+    protected void handleOnRead(Buffer data) {
         if(stage == Stage.STREAM_RUNNING){
-            processStreamRunning(buffer);
+            processStreamRunning(data);
             return;
         }
 
-        ringBuffer.put(buffer.getBytes());
+        ringBuffer.put(data.getBytes());
         if(stage == Stage.STREAM_ADDR_CONNECTING){
 
             socket.write(Buffer.buffer(new byte[]
@@ -81,6 +81,27 @@ public class InboundHandler implements Inbound{
                 || stage == Stage.STREAM_START;
     }
 
+    @Override
+    protected void handleOnEnd(Void v) {
+        log.debug("local socket has been end");
+        destroyHandler(v);
+    }
+
+    @Override
+    protected void handleOnException(Throwable t) {
+        log.debug("exception occurred on Local, [{}]",t);
+        destroyHandler();
+    }
+
+    @Override
+    protected void handleOnClose(Void v) {
+        if(stage == Stage.STREAM_DESTROYED){
+            log.debug("already been destroyed");
+            return;
+        }
+        destroyHandler();
+    }
+
     private void processStreamStart(){
         int available = ringBuffer.getAvailableBytes();
         if(available < 3){//waitting for more data come.
@@ -96,7 +117,7 @@ public class InboundHandler implements Inbound{
         socket.write(Buffer.buffer(new byte[]{0x05,0x00}));
 
 
-        handleOnLocalRead(Buffer.buffer(new byte[0]));//recheck whether have data to process.
+        handleOnRead(Buffer.buffer(new byte[0]));//recheck whether have data to process.
     }
 
     private void processStreamRunning(Buffer data){
@@ -193,45 +214,31 @@ public class InboundHandler implements Inbound{
     }
 
 
-    private void handleOnLocalClose(Void v){
-        if(stage == Stage.STREAM_DESTROYED){
-            log.debug("already been destroyed");
-            return;
-        }
-        close();
-        outbound.tell(CLOSE_ACTION,v);
-    }
 
-    private void handleOnLocalException(Throwable t){
-        log.debug("exception occurred on Local, [{}]",t);
-        close();
-        outbound.tell(EXCEPTION_ACTION,t);
-    }
-
-    private void handleOnLocalEnd(Void v){
-        log.debug("local socket has been end");
-        destroyHandler();
-    }
-
-    public void destroyHandler(){
+    public void destroyHandler(Object o){
         if(stage == Stage.STREAM_DESTROYED){
             log.debug("already destroyed");
             return;
         }
         stage = Stage.STREAM_DESTROYED;
 
-        Void v = null;
-        outbound.tell(END_ACTION,v);
+        if(outbound != null)
+            outbound.tell(END_ACTION,o);
         close();
+    }
+
+    public void destroyHandler(){
+        destroyHandler(new Object());
     }
 
     @Override
     public void process(NetSocket socket) {
         this.socket = socket;
-        socket.handler(this::handleOnLocalRead)
-                .closeHandler(this::handleOnLocalClose)
-                .endHandler(this::handleOnLocalClose)
-                .exceptionHandler(this::handleOnLocalException);
+        socket.handler(this::handleOnRead)
+                .closeHandler(this::handleOnClose)
+                .endHandler(this::handleOnClose)
+                .exceptionHandler(this::handleOnException)
+                .drainHandler(this::handleOnDrain);
         this.config = Main.instance.configManager.getSpecConfig("socks");
         this.inboundConfig = config.inbound;
     }
@@ -247,7 +254,7 @@ public class InboundHandler implements Inbound{
 
     private Handler<Buffer> handler = data ->{
         log.debug("Socks#InboundHandler, write to socket, size: [{}]",data.length());
-        socket.write(data);
+        writeToSocket(data);
     };
 
 

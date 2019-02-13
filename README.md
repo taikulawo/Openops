@@ -2,3 +2,30 @@
 
 这是一个具有了相应思想的玩具
 
+总体的配置文件
+
+```
+{
+    "isLocal":"true | false",
+    "inbounds":[
+        {
+            "tl":"tcp | udp",
+            "tag":"your inbound tag name",
+            "main":"main class path, package url. com.wwc.Protocol.Socks.InboundHandler",
+            "name":"protocol name",
+            "sendto":"which outbound use, use tag here",
+            "port":6000
+        }
+    ],
+    "outbounds":[
+        {
+            "tl":"tcp | udp",
+            "tag":"your outbound tag name",
+            "main":"main class path, package url. com.wwc.Protocol.Socks.OutboundHandler",
+            "name":"protocol name"
+        }
+    ]
+}
+```
+
+通过指定不同的Inbound和Outbound Class位置来运行时加载

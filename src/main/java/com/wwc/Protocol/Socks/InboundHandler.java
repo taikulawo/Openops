@@ -123,7 +123,7 @@ public class InboundHandler extends SocketCallback implements Inbound{
     private void processStreamRunning(Buffer data){
         //for socks. we don't need to control package length,
         //so in there, we transfer all data we recv from socket.
-        log.debug("Send to Outbound through process(), size: [{}]",data.length());
+        log.debug("Send to OutboundHandler through process(), size: [{}]",data.length());
         outbound.process(data,dst,this.handler,this);
 
     }
@@ -204,12 +204,12 @@ public class InboundHandler extends SocketCallback implements Inbound{
 
     private void connectToOutbound(){
         String sendTo = (String)inboundConfig.get("sendTo");
+
         try {
             outbound = Main.instance.dispatcher.dispatchToOutbound(sendTo);
         } catch (Exception e) {
             e.printStackTrace();
         }
-
 
     }
 

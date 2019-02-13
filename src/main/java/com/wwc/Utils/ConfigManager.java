@@ -106,6 +106,10 @@ public class ConfigManager {
     }
 
     public HashMap getSpecOutboundFromTag(String tag){
+        return getHashMap(tag, outbounds);
+    }
+
+    private HashMap getHashMap(String tag, ArrayList<HashMap<String, Object>> outbounds) {
         for(HashMap<String,Object> config : outbounds){
             String name = (String)config.get("tag");
             if(name.equals(tag)){
@@ -116,12 +120,6 @@ public class ConfigManager {
     }
 
     public HashMap getSpecInboundFromTag(String tag){
-        for(HashMap<String,Object> config : inbounds){
-            String name = (String) config.get("tag");
-            if(name.equals(tag)){
-                return config;
-            }
-        }
-        return null;
+        return getHashMap(tag, inbounds);
     }
 }
